@@ -1,0 +1,4 @@
+/.stack-work/
+/*.sqlite
+/*.sqlite-journal
+/stack.yaml.lock
