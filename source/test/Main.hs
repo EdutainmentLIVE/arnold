@@ -211,6 +211,38 @@ main = Hspec.hspec $ do
                          , (Arnold.Rank 1, Arnold.Score 3, taylor)
                          ]
 
+    Hspec.it "with three workouts over three people with two tied" $ do
+      let
+        taylor = newUserId "taylor"
+        cameron = newUserId "cameron"
+        dustin = newUserId "dustin"
+        workoutTaylor = Arnold.Workout
+          { Arnold.workoutId = newWorkoutId 1
+          , Arnold.workoutRecordedAt = newZonedTime 1 8
+          , Arnold.workoutExercise = Arnold.ExercisePlank
+          , Arnold.workoutUserId = taylor
+          , Arnold.workoutCount = Arnold.Count 1
+          }
+        workoutCameron = Arnold.Workout
+          { Arnold.workoutId = newWorkoutId 2
+          , Arnold.workoutRecordedAt = newZonedTime 1 8
+          , Arnold.workoutExercise = Arnold.ExercisePlank
+          , Arnold.workoutUserId = cameron
+          , Arnold.workoutCount = Arnold.Count 2
+          }
+        workoutDustin = Arnold.Workout
+          { Arnold.workoutId = newWorkoutId 3
+          , Arnold.workoutRecordedAt = newZonedTime 1 8
+          , Arnold.workoutExercise = Arnold.ExercisePlank
+          , Arnold.workoutUserId = dustin
+          , Arnold.workoutCount = Arnold.Count 2
+          }
+      Arnold.makeLeaderboard [workoutTaylor, workoutCameron, workoutDustin]
+        `Hspec.shouldBe` [ (Arnold.Rank 1, Arnold.Score 3, cameron)
+                         , (Arnold.Rank 1, Arnold.Score 3, dustin)
+                         , (Arnold.Rank 3, Arnold.Score 1, taylor)
+                         ]
+
     Hspec.it "with nine workouts" $ do
       let
         taylor = newUserId "taylor"

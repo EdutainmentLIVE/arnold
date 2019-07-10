@@ -27,8 +27,10 @@ import qualified Data.ByteString.Lazy as LazyByteString
 import qualified Data.Csv as Csv
 import qualified Data.Default as Default
 import qualified Data.Foldable as Foldable
+import qualified Data.List as List
 import qualified Data.Map as Map
 import qualified Data.Maybe as Maybe
+import qualified Data.Ord as Ord
 import qualified Data.String as String
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text
@@ -166,8 +168,9 @@ getRootAction connection = do
 -- is a little more complicated than you might think in order to handle ties.
 makeLeaderboard :: [Workout Time.ZonedTime] -> [(Rank, Score, UserId)]
 makeLeaderboard =
-  concatMap (\(r, (s, is)) -> fmap (\i -> (r, s, i)) is)
-    . withRanks
+  fmap (\(r, (s, i)) -> (r, s, i))
+    . rankBy (Ord.Down . fst)
+    . concatMap (\(s, is) -> fmap (\i -> (s, i)) is)
     . Map.toDescList
     . fmap (fmap fst) -- Remove score from values since it's the key.
     . groupBy snd -- Group tuples by score.
@@ -613,12 +616,26 @@ newtype Rank = Rank
   { unwrapRank :: Natural.Natural
   } deriving (Eq, Show)
 
+instance Semigroup Rank where
+  x <> y = Rank $ unwrapRank x + unwrapRank y
+
 instance Lucid.ToHtml Rank where
   toHtml = toHtmlViaRaw
   toHtmlRaw = Lucid.toHtmlRaw . show . unwrapRank
 
-withRanks :: [a] -> [(Rank, a)]
-withRanks = zip (fmap Rank [1 ..])
+rankBy :: Ord b => (a -> b) -> [a] -> [(Rank, a)]
+rankBy f =
+  fst
+    . foldl
+        (\(ys, rank) ties ->
+          ( ys <> zip (repeat rank) (fmap snd ties)
+          , rank <> Rank (List.genericLength ties)
+          )
+        )
+        ([], Rank 1)
+    . List.groupBy (\x y -> fst x == fst y)
+    . List.sortOn fst
+    . fmap (\x -> (f x, x))
 
 newtype Score = Score
   { unwrapScore :: Natural.Natural
