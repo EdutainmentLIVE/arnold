@@ -97,6 +97,8 @@ getRootAction connection = do
   users <- Scotty.liftAndCatchIO $ selectUsers connection
   let names = makeUserIdsToNames users
 
+  let personalBests = getPersonalBests workouts
+
   Scotty.html . Lucid.renderText . Lucid.doctypehtml_ $ do
 
     Lucid.head_ $ do
@@ -144,6 +146,21 @@ getRootAction connection = do
             Lucid.td_ . Lucid.toHtml $ getUserName names userId
             Lucid.td_ $ Lucid.toHtml score
 
+      Lucid.h2_ [Lucid.class_ "centered"] "Personal Bests"
+      Lucid.details_ $ do
+        Lucid.summary_ "Click to expand/collapse."
+        Lucid.table_ [Lucid.class_ "table"] $ do
+          Lucid.thead_ . Lucid.tr_ $ do
+            Lucid.th_ "Name"
+            Lucid.th_ "Exercise"
+            Lucid.th_ "Count"
+          Lucid.tbody_
+            . Monad.forM_ personalBests
+            $ \(userId, exercise, count) -> Lucid.tr_ $ do
+                Lucid.td_ . Lucid.toHtml $ getUserName names userId
+                Lucid.td_ $ Lucid.toHtml exercise
+                Lucid.td_ $ Lucid.toHtml count
+
       Lucid.h2_ [Lucid.class_ "centered"] "Workouts"
       Lucid.details_ $ do
         Lucid.summary_ "Click to expand/collapse."
@@ -163,10 +180,22 @@ getRootAction connection = do
             Lucid.td_ . Lucid.toHtml $ formatTime "%Y-%m-%d" time
             Lucid.td_ . Lucid.toHtml $ formatTime "%-I:%M %p ET" time
             Lucid.td_ . Lucid.toHtml $ workoutExercise workout
-            Lucid.td_ . Lucid.toHtml . getUserName names $ workoutUserId workout
+            Lucid.td_ . Lucid.toHtml . getUserName names $ workoutUserId
+              workout
             Lucid.td_ . Lucid.toHtml $ workoutCount workout
 
       Lucid.div_ [Lucid.class_ "centered"] $ Lucid.p_ "\x1F4AA"
+
+getPersonalBests :: [Workout Time.ZonedTime] -> [(UserId, Exercise, Count)]
+getPersonalBests =
+  concatMap (\(u, m) -> fmap (\(e, c) -> (u, e, c)) $ Map.toList m)
+    . Map.toList
+    . fmap
+        (Map.unionsWith max
+        . fmap (fmap (foldMap workoutCount) . groupBy workoutExercise)
+        . groupBy workoutDay
+        )
+    . groupBy workoutUserId
 
 -- | Given a bunch of workouts, calculates each person's rank (and score). This
 -- is a little more complicated than you might think in order to handle ties.
