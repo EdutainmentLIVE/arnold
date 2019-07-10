@@ -145,22 +145,26 @@ getRootAction connection = do
             Lucid.td_ $ Lucid.toHtml score
 
       Lucid.h2_ [Lucid.class_ "centered"] "Workouts"
-      Lucid.p_ [Lucid.class_ "centered"]
-        $ Lucid.a_ [Lucid.href_ "/workouts.csv"] "download CSV"
-      Lucid.table_ [Lucid.class_ "table"] $ do
-        Lucid.thead_ . Lucid.tr_ $ do
-          Lucid.th_ "Date"
-          Lucid.th_ "Time"
-          Lucid.th_ "Exercise"
-          Lucid.th_ "Person"
-          Lucid.th_ "Count"
-        Lucid.tbody_ . Monad.forM_ workouts $ \workout -> Lucid.tr_ $ do
-          let time = workoutRecordedAt workout
-          Lucid.td_ . Lucid.toHtml $ formatTime "%Y-%m-%d" time
-          Lucid.td_ . Lucid.toHtml $ formatTime "%-I:%M %p ET" time
-          Lucid.td_ . Lucid.toHtml $ workoutExercise workout
-          Lucid.td_ . Lucid.toHtml . getUserName names $ workoutUserId workout
-          Lucid.td_ . Lucid.toHtml $ workoutCount workout
+      Lucid.details_ $ do
+        Lucid.summary_ "Click to expand/collapse."
+        Lucid.p_ [Lucid.class_ "centered"] $ do
+          "Download workouts as "
+          Lucid.a_ [Lucid.href_ "/workouts.csv"] "a CSV"
+          "."
+        Lucid.table_ [Lucid.class_ "table"] $ do
+          Lucid.thead_ . Lucid.tr_ $ do
+            Lucid.th_ "Date"
+            Lucid.th_ "Time"
+            Lucid.th_ "Exercise"
+            Lucid.th_ "Person"
+            Lucid.th_ "Count"
+          Lucid.tbody_ . Monad.forM_ workouts $ \workout -> Lucid.tr_ $ do
+            let time = workoutRecordedAt workout
+            Lucid.td_ . Lucid.toHtml $ formatTime "%Y-%m-%d" time
+            Lucid.td_ . Lucid.toHtml $ formatTime "%-I:%M %p ET" time
+            Lucid.td_ . Lucid.toHtml $ workoutExercise workout
+            Lucid.td_ . Lucid.toHtml . getUserName names $ workoutUserId workout
+            Lucid.td_ . Lucid.toHtml $ workoutCount workout
 
       Lucid.div_ [Lucid.class_ "centered"] $ Lucid.p_ "\x1F4AA"
 
