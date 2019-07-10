@@ -16,8 +16,7 @@ license: ISC
 maintainer: Taylor Fausak
 synopsis: Track workouts through Slack.
 
-executable arnold
-  autogen-modules: Paths_arnold
+common library
   build-depends:
     base ^>= 4.12.0,
     bytestring ^>= 0.10.8,
@@ -41,11 +40,35 @@ executable arnold
     warp ^>= 3.2.27,
   default-language: Haskell2010
   ghc-options:
-    -rtsopts
-    -threaded
     -Weverything
     -Wno-implicit-prelude
     -Wno-safe
     -Wno-unsafe
-  main-is: Main.hs
+
+common executable
+  import: library
+
+  build-depends: arnold
+  ghc-options: -rtsopts -threaded
+
+library
+  import: library
+
+  autogen-modules: Paths_arnold
+  exposed-modules: Arnold
+  hs-source-dirs: source/library
   other-modules: Paths_arnold
+
+executable arnold
+  import: executable
+
+  hs-source-dirs: source/executable
+  main-is: Main.hs
+
+test-suite test
+  import: executable
+
+  build-depends: hspec ^>= 2.6.1
+  hs-source-dirs: source/test
+  main-is: Main.hs
+  type: exitcode-stdio-1.0

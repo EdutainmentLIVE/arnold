@@ -3,8 +3,16 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 
-module Main
-  ( main
+module Arnold
+  ( defaultMain
+  , makeLeaderboard
+  , Count(..)
+  , Exercise(..)
+  , Rank(..)
+  , Score(..)
+  , UserId(..)
+  , Workout(..)
+  , WorkoutId(..)
   )
 where
 
@@ -18,6 +26,7 @@ import qualified Data.ByteString as ByteString
 import qualified Data.ByteString.Lazy as LazyByteString
 import qualified Data.Csv as Csv
 import qualified Data.Default as Default
+import qualified Data.Foldable as Foldable
 import qualified Data.Map as Map
 import qualified Data.Maybe as Maybe
 import qualified Data.String as String
@@ -51,8 +60,8 @@ import qualified Web.FormUrlEncoded as Form
 import qualified Web.HttpApiData as Form
 import qualified Web.Scotty as Scotty
 
-main :: IO ()
-main = do
+defaultMain :: IO ()
+defaultMain = do
   config <- getConfig
   Sql.withConnection (configDatabaseFile config) $ \connection -> do
     mapM_ (Sql.execute_ connection) migrations
@@ -173,11 +182,16 @@ makeScoreboard workouts = Map.unionsWith
   (<>)
   [scoreParticipation workouts, scoreImprovement workouts, scoreBest workouts]
 
--- | Each person gets one point for every one of their workouts. Technically
--- the rules stipulate that you can only get up to eight points per day, but
--- we'll rely on the honor system instead of forcing that here.
-scoreParticipation :: [Workout time] -> Map.Map UserId Score
-scoreParticipation = fmap (foldMap . const $ Score 1) . groupBy workoutUserId
+-- | Each person gets one point for every one of their workouts. Each person
+-- can only get up to eight points per day here.
+scoreParticipation :: [Workout Time.ZonedTime] -> Map.Map UserId Score
+scoreParticipation =
+  fmap
+      (Foldable.fold
+      . fmap (min (Score 8) . foldMap (const $ Score 1))
+      . groupBy workoutDay
+      )
+    . groupBy workoutUserId
 
 -- | This is the most complicated part of the scoring. Each person gets four
 -- points every time that they beat their previous daily best.
@@ -190,7 +204,7 @@ scoreImprovement = fmap scorePersonalImprovement . groupBy workoutUserId
 scorePersonalImprovement :: [Workout Time.ZonedTime] -> Score
 scorePersonalImprovement =
   fst
-    . foldr scorePersonalImprovementHelper (Score 0, Map.empty)
+    . foldl scorePersonalImprovementHelper (Score 0, Map.empty)
     . concatMap snd
     . Map.toAscList
     . fmap (Map.toList . fmap (foldMap workoutCount) . groupBy workoutExercise)
@@ -204,15 +218,15 @@ workoutDay = Time.localDay . Time.zonedTimeToLocalTime . workoutRecordedAt
 -- its own: Figuring out if a person beat their personal best and carrying
 -- along a map of the personal bests for each exercise.
 scorePersonalImprovementHelper
-  :: (Exercise, Count)
+  :: (Score, Map.Map Exercise Count)
+  -> (Exercise, Count)
   -> (Score, Map.Map Exercise Count)
-  -> (Score, Map.Map Exercise Count)
-scorePersonalImprovementHelper (exercise, count) (score, bests) =
+scorePersonalImprovementHelper (score, bests) (exercise, count) =
   ( case Map.lookup exercise bests of
     -- If this is their first time doing the exercise, they don't get the bonus
     -- points for being their (nonexistent) personal best.
     Nothing -> score
-    Just previous -> if previous > count
+    Just previous -> if previous >= count
       -- Similarly if their previous score is better then they don't get the
       -- bonus points.
       then score
