@@ -97,7 +97,9 @@ getRootAction connection = do
   users <- Scotty.liftAndCatchIO $ selectUsers connection
   let names = makeUserIdsToNames users
 
-  let personalBests = getPersonalBests workouts
+  let
+    personalBests = getPersonalBests workouts
+    dailyBests = getDailyBests workouts
 
   Scotty.html . Lucid.renderText . Lucid.doctypehtml_ $ do
 
@@ -138,7 +140,7 @@ getRootAction connection = do
       Lucid.table_ [Lucid.class_ "table"] $ do
         Lucid.thead_ . Lucid.tr_ $ do
           Lucid.th_ "Rank"
-          Lucid.th_ "Name"
+          Lucid.th_ "Person"
           Lucid.th_ "Score"
         Lucid.tbody_ . Monad.forM_ leaderboard $ \(rank, score, userId) ->
           Lucid.tr_ $ do
@@ -151,7 +153,7 @@ getRootAction connection = do
         Lucid.summary_ "Click to expand/collapse."
         Lucid.table_ [Lucid.class_ "table"] $ do
           Lucid.thead_ . Lucid.tr_ $ do
-            Lucid.th_ "Name"
+            Lucid.th_ "Person"
             Lucid.th_ "Exercise"
             Lucid.th_ "Count"
           Lucid.tbody_
@@ -159,6 +161,23 @@ getRootAction connection = do
             $ \(userId, exercise, count) -> Lucid.tr_ $ do
                 Lucid.td_ . Lucid.toHtml $ getUserName names userId
                 Lucid.td_ $ Lucid.toHtml exercise
+                Lucid.td_ $ Lucid.toHtml count
+
+      Lucid.h2_ [Lucid.class_ "centered"] "Daily bests"
+      Lucid.details_ $ do
+        Lucid.summary_ "Click to expand/collapse."
+        Lucid.table_ [Lucid.class_ "table"] $ do
+          Lucid.thead_ . Lucid.tr_ $ do
+            Lucid.th_ "Day"
+            Lucid.th_ "Exercise"
+            Lucid.th_ "Person"
+            Lucid.th_ "Count"
+          Lucid.tbody_
+            . Monad.forM_ dailyBests
+            $ \(day, exercise, userId, count) -> Lucid.tr_ $ do
+                Lucid.td_ . Lucid.toHtml $ formatTime "%Y-%m-%d" day
+                Lucid.td_ $ Lucid.toHtml exercise
+                Lucid.td_ . Lucid.toHtml $ getUserName names userId
                 Lucid.td_ $ Lucid.toHtml count
 
       Lucid.h2_ [Lucid.class_ "centered"] "Workouts"
@@ -185,6 +204,25 @@ getRootAction connection = do
             Lucid.td_ . Lucid.toHtml $ workoutCount workout
 
       Lucid.div_ [Lucid.class_ "centered"] $ Lucid.p_ "\x1F4AA"
+
+getDailyBests
+  :: [Workout Time.ZonedTime] -> [(Time.Day, Exercise, UserId, Count)]
+getDailyBests =
+  concatMap (\(d, xs) -> fmap (\(e, (u, c)) -> (d, e, u, c)) xs)
+    . Map.toDescList
+    . fmap
+        (Maybe.mapMaybe (\(k, mv) -> (,) <$> Just k <*> mv)
+        . Map.toList
+        . fmap
+            (Maybe.listToMaybe
+            . List.sortOn (Ord.Down . snd)
+            . Map.toList
+            . fmap (foldMap workoutCount)
+            . groupBy workoutUserId
+            )
+        . groupBy workoutExercise
+        )
+    . groupBy workoutDay
 
 getPersonalBests :: [Workout Time.ZonedTime] -> [(UserId, Exercise, Count)]
 getPersonalBests =
