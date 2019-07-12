@@ -148,21 +148,6 @@ getRootAction connection = do
             Lucid.td_ . Lucid.toHtml $ getUserName names userId
             Lucid.td_ $ Lucid.toHtml score
 
-      Lucid.h2_ [Lucid.class_ "centered"] "Personal Bests"
-      Lucid.details_ $ do
-        Lucid.summary_ "Click to expand/collapse."
-        Lucid.table_ [Lucid.class_ "table"] $ do
-          Lucid.thead_ . Lucid.tr_ $ do
-            Lucid.th_ "Person"
-            Lucid.th_ "Exercise"
-            Lucid.th_ "Count"
-          Lucid.tbody_
-            . Monad.forM_ personalBests
-            $ \(userId, exercise, count) -> Lucid.tr_ $ do
-                Lucid.td_ . Lucid.toHtml $ getUserName names userId
-                Lucid.td_ $ Lucid.toHtml exercise
-                Lucid.td_ $ Lucid.toHtml count
-
       Lucid.h2_ [Lucid.class_ "centered"] "Daily bests"
       Lucid.details_ $ do
         Lucid.summary_ "Click to expand/collapse."
@@ -176,6 +161,21 @@ getRootAction connection = do
             . Monad.forM_ dailyBests
             $ \(day, exercise, userId, count) -> Lucid.tr_ $ do
                 Lucid.td_ . Lucid.toHtml $ formatTime "%Y-%m-%d" day
+                Lucid.td_ $ Lucid.toHtml exercise
+                Lucid.td_ . Lucid.toHtml $ getUserName names userId
+                Lucid.td_ $ Lucid.toHtml count
+
+      Lucid.h2_ [Lucid.class_ "centered"] "Personal Bests"
+      Lucid.details_ $ do
+        Lucid.summary_ "Click to expand/collapse."
+        Lucid.table_ [Lucid.class_ "table"] $ do
+          Lucid.thead_ . Lucid.tr_ $ do
+            Lucid.th_ "Exercise"
+            Lucid.th_ "Person"
+            Lucid.th_ "Count"
+          Lucid.tbody_
+            . Monad.forM_ personalBests
+            $ \(userId, exercise, count) -> Lucid.tr_ $ do
                 Lucid.td_ $ Lucid.toHtml exercise
                 Lucid.td_ . Lucid.toHtml $ getUserName names userId
                 Lucid.td_ $ Lucid.toHtml count
@@ -226,7 +226,8 @@ getDailyBests =
 
 getPersonalBests :: [Workout Time.ZonedTime] -> [(UserId, Exercise, Count)]
 getPersonalBests =
-  concatMap (\(u, m) -> fmap (\(e, c) -> (u, e, c)) $ Map.toList m)
+  List.sortOn (\(_, e, c) -> (e, Ord.Down c))
+    . concatMap (\(u, m) -> fmap (\(e, c) -> (u, e, c)) $ Map.toList m)
     . Map.toList
     . fmap
         (Map.unionsWith max
