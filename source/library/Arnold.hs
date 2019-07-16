@@ -91,15 +91,22 @@ defaultAction problem = do
 
 getRootAction :: Sql.Connection -> Scotty.ActionM ()
 getRootAction connection = do
-  zone <- getTimeZone
-  workouts <- Scotty.liftAndCatchIO $ selectWorkouts connection zone
-  let leaderboard = makeLeaderboard workouts
-  users <- Scotty.liftAndCatchIO $ selectUsers connection
-  let names = makeUserIdsToNames users
-
+  -- Note that this would have to change if this service ever ran on a server
+  -- that wasn't in the same time zone as the office. Doing this was easy and
+  -- preferrable to figuring out if the current zone is EDT or EST.
+  now <- Scotty.liftAndCatchIO Time.getZonedTime
   let
+    today = Time.localDay $ Time.zonedTimeToLocalTime now
+    zone = Time.zonedTimeZone now
+
+  workouts <- Scotty.liftAndCatchIO $ selectWorkouts connection zone
+  users <- Scotty.liftAndCatchIO $ selectUsers connection
+  let
+    leaderboard = makeLeaderboard workouts
+    names = makeUserIdsToNames users
     personalBests = getPersonalBests workouts
     dailyBests = getDailyBests workouts
+    dailyWorkouts = filter ((== today) . workoutDay) workouts
 
   Scotty.html . Lucid.renderText . Lucid.doctypehtml_ $ do
 
@@ -180,11 +187,11 @@ getRootAction connection = do
                 Lucid.td_ . Lucid.toHtml $ getUserName names userId
                 Lucid.td_ $ Lucid.toHtml count
 
-      Lucid.h2_ [Lucid.class_ "centered"] "Workouts"
+      Lucid.h2_ [Lucid.class_ "centered"] "Today's workouts"
       Lucid.details_ $ do
         Lucid.summary_ "Click to expand/collapse."
         Lucid.p_ [Lucid.class_ "centered"] $ do
-          "Download workouts as "
+          "Download all workouts as "
           Lucid.a_ [Lucid.href_ "/workouts.csv"] "a CSV"
           "."
         Lucid.table_ [Lucid.class_ "table"] $ do
@@ -194,7 +201,7 @@ getRootAction connection = do
             Lucid.th_ "Exercise"
             Lucid.th_ "Person"
             Lucid.th_ "Count"
-          Lucid.tbody_ . Monad.forM_ workouts $ \workout -> Lucid.tr_ $ do
+          Lucid.tbody_ . Monad.forM_ dailyWorkouts $ \workout -> Lucid.tr_ $ do
             let time = workoutRecordedAt workout
             Lucid.td_ . Lucid.toHtml $ formatTime "%Y-%m-%d" time
             Lucid.td_ . Lucid.toHtml $ formatTime "%-I:%M %p ET" time
@@ -559,16 +566,10 @@ fromBase16 =
 
 getWorkoutsAction :: Sql.Connection -> Scotty.ActionM ()
 getWorkoutsAction connection = do
-  zone <- getTimeZone
+  Time.ZonedTime _ zone <- Scotty.liftAndCatchIO Time.getZonedTime
   workouts <- Scotty.liftAndCatchIO $ selectWorkouts connection zone
   Scotty.setHeader "Content-Type" "text/csv; charset=utf-8"
   Scotty.raw $ Csv.encodeDefaultOrderedByName workouts
-
--- Note that this would have to change if this service ever ran on a server
--- that wasn't in the same time zone as the office. Doing this was easy and
--- preferrable to figuring out if the current zone is EDT or EST.
-getTimeZone :: Scotty.ActionM Time.TimeZone
-getTimeZone = Scotty.liftAndCatchIO Time.getCurrentTimeZone
 
 notFoundAction :: Scotty.ActionM ()
 notFoundAction = Scotty.text "404 Not Found"
