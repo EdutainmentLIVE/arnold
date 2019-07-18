@@ -157,7 +157,7 @@ getRootAction connection = do
 
       Lucid.h2_ [Lucid.class_ "centered"] "Daily bests"
       Lucid.details_ $ do
-        Lucid.summary_ "Click to expand/collapse."
+        Lucid.summary_ "Click to expand/collapse daily bests."
         Lucid.table_ [Lucid.class_ "table"] $ do
           Lucid.thead_ . Lucid.tr_ $ do
             Lucid.th_ "Day"
@@ -173,23 +173,25 @@ getRootAction connection = do
                 Lucid.td_ $ Lucid.toHtml count
 
       Lucid.h2_ [Lucid.class_ "centered"] "Personal Bests"
-      Lucid.details_ $ do
-        Lucid.summary_ "Click to expand/collapse."
-        Lucid.table_ [Lucid.class_ "table"] $ do
-          Lucid.thead_ . Lucid.tr_ $ do
-            Lucid.th_ "Exercise"
-            Lucid.th_ "Person"
-            Lucid.th_ "Count"
-          Lucid.tbody_
-            . Monad.forM_ personalBests
-            $ \(userId, exercise, count) -> Lucid.tr_ $ do
-                Lucid.td_ $ Lucid.toHtml exercise
-                Lucid.td_ . Lucid.toHtml $ getUserName names userId
-                Lucid.td_ $ Lucid.toHtml count
+      Monad.forM_ [ExercisePushUp, ExerciseSquat, ExercisePlank]
+        $ \exercise -> Lucid.details_ $ do
+            Lucid.summary_ $ do
+              "Click to expand/collapse "
+              Lucid.toHtml exercise
+              "s."
+            Lucid.table_ [Lucid.class_ "table"] $ do
+              Lucid.thead_ . Lucid.tr_ $ do
+                Lucid.th_ "Person"
+                Lucid.th_ "Count"
+              Lucid.tbody_
+                . Monad.forM_ (Map.findWithDefault [] exercise personalBests)
+                $ \(userId, count) -> Lucid.tr_ $ do
+                    Lucid.td_ . Lucid.toHtml $ getUserName names userId
+                    Lucid.td_ $ Lucid.toHtml count
 
       Lucid.h2_ [Lucid.class_ "centered"] "Today's workouts"
       Lucid.details_ $ do
-        Lucid.summary_ "Click to expand/collapse."
+        Lucid.summary_ "Click to expand/collapse today's workouts."
         Lucid.p_ [Lucid.class_ "centered"] $ do
           "Download all workouts as "
           Lucid.a_ [Lucid.href_ "/workouts.csv"] "a CSV"
@@ -231,10 +233,13 @@ getDailyBests =
         )
     . groupBy workoutDay
 
-getPersonalBests :: [Workout Time.ZonedTime] -> [(UserId, Exercise, Count)]
+getPersonalBests
+  :: [Workout Time.ZonedTime] -> Map.Map Exercise [(UserId, Count)]
 getPersonalBests =
-  List.sortOn (\(_, e, c) -> (e, Ord.Down c))
-    . concatMap (\(u, m) -> fmap (\(e, c) -> (u, e, c)) $ Map.toList m)
+  fmap (fmap snd)
+    . groupBy fst
+    . List.sortOn (Ord.Down . snd . snd)
+    . concatMap (\(u, m) -> fmap (\(e, c) -> (e, (u, c))) $ Map.toList m)
     . Map.toList
     . fmap
         (Map.unionsWith max
