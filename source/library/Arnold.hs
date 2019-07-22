@@ -158,10 +158,11 @@ getRootAction connection = do
 
       Lucid.h2_ [Lucid.class_ "centered"] "Totals"
       Lucid.table_ [Lucid.class_ "table"] $ do
-          Lucid.thead_ . Lucid.tr_ $ do
-            Lucid.th_ "Exercise"
-            Lucid.th_ "Count"
-          Lucid.tbody_ . Monad.forM_ totals $ \ (exercise, count) -> Lucid.tr_ $ do
+        Lucid.thead_ . Lucid.tr_ $ do
+          Lucid.th_ "Exercise"
+          Lucid.th_ "Count"
+        Lucid.tbody_ . Monad.forM_ totals $ \(exercise, count) ->
+          Lucid.tr_ $ do
             Lucid.td_ $ Lucid.toHtml exercise
             Lucid.td_ $ Lucid.toHtml count
 
@@ -585,9 +586,48 @@ fromBase16 =
 getWorkoutsAction :: Sql.Connection -> Scotty.ActionM ()
 getWorkoutsAction connection = do
   Time.ZonedTime _ zone <- Scotty.liftAndCatchIO Time.getZonedTime
+  users <- Scotty.liftAndCatchIO $ selectUsers connection
   workouts <- Scotty.liftAndCatchIO $ selectWorkouts connection zone
+  let rows = makeRows users workouts
   Scotty.setHeader "Content-Type" "text/csv; charset=utf-8"
-  Scotty.raw $ Csv.encodeDefaultOrderedByName workouts
+  Scotty.raw $ Csv.encodeDefaultOrderedByName rows
+
+makeRows :: [User] -> [Workout Time.ZonedTime] -> [Row]
+makeRows users =
+  let
+    usersById = indexBy userId users
+    makeRow workout = do
+      user <- Map.lookup (workoutUserId workout) usersById
+      Just Row { rowUser = user, rowWorkout = workout }
+  in Maybe.mapMaybe makeRow
+    . List.sortOn (Time.zonedTimeToUTC . workoutRecordedAt)
+
+data Row = Row
+  { rowUser :: User
+  , rowWorkout :: Workout Time.ZonedTime
+  } deriving (Show)
+
+instance Csv.DefaultOrdered Row where
+  headerOrder = const . Vector.fromList $ fmap fst rowCsvFields
+
+instance Csv.ToNamedRecord Row where
+  toNamedRecord row = Csv.namedRecord
+    $ fmap (\(name, toField) -> (name, toField row)) rowCsvFields
+
+rowCsvFields :: [(Csv.Name, Row -> Csv.Field)]
+rowCsvFields =
+  [ ("Workout ID", Csv.toField . workoutId . rowWorkout)
+  , ( "Recorded at"
+    , Csv.toField
+      . formatTime "%Y-%m-%dT%H:%M:%S%Q%z"
+      . workoutRecordedAt
+      . rowWorkout
+    )
+  , ("Exercise", Csv.toField . workoutExercise . rowWorkout)
+  , ("User ID", Csv.toField . userId . rowUser)
+  , ("User name", Csv.toField . userName . rowUser)
+  , ("count", Csv.toField . workoutCount . rowWorkout)
+  ]
 
 notFoundAction :: Scotty.ActionM ()
 notFoundAction = Scotty.text "404 Not Found"
@@ -806,6 +846,9 @@ instance Form.FromHttpApiData Name where
     text <- Form.parseUrlPiece urlPiece
     pure $ Name text
 
+instance Csv.ToField Name where
+  toField = Csv.toField . unwrapName
+
 instance Sql.ToField Name where
   toField = Sql.toField . unwrapName
 
@@ -985,6 +1028,9 @@ formatTime = Time.formatTime Time.defaultTimeLocale
 
 groupBy :: (Foldable t, Ord k) => (a -> k) -> t a -> Map.Map k [a]
 groupBy f = foldr (\x -> Map.alter (Just . maybe [x] (x :)) (f x)) Map.empty
+
+indexBy :: (Foldable t, Ord k) => (a -> k) -> t a -> Map.Map k a
+indexBy f = foldr (\x -> Map.insert (f x) x) Map.empty
 
 integerToNatural :: Integer -> Maybe Natural.Natural
 integerToNatural integer =
